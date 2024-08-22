@@ -144,7 +144,18 @@ type Builder struct {
 }
 
 // NewBuilder creates a new extension.Builder to help with creating components form a set of configs and factories.
-func NewBuilder(cfgs map[component.ID]component.Config, factories map[component.Type]Factory) *Builder {
+func NewBuilder(cfgs map[component.ID]component.Config, defaultExtensions []component.ID, factories map[component.Type]Factory) *Builder {
+	// create default configs for extensions enabled by default
+	// skip this step if an extension config is overriden by user
+	for _, extID := range defaultExtensions {
+		if _, exists := cfgs[extID]; !exists {
+			f, existsFactory := factories[extID.Type()]
+			if !existsFactory {
+				continue
+			}
+			cfgs[extID] = f.CreateDefaultConfig()
+		}
+	}
 	return &Builder{cfgs: cfgs, factories: factories}
 }
 

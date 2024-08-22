@@ -52,5 +52,6 @@ func NewNopBuilder() *extension.Builder {
 	nopFactory := NewNopFactory()
 	return extension.NewBuilder(
 		map[component.ID]component.Config{component.NewID(nopType): nopFactory.CreateDefaultConfig()},
+		[]component.ID{},
 		map[component.Type]extension.Factory{nopType: nopFactory})
 }

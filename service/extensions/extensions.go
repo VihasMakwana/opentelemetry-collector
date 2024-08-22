@@ -172,6 +172,8 @@ type Settings struct {
 
 	// Extensions builder for extensions.
 	Extensions *extension.Builder
+
+	DefaultExtensions Config
 }
 
 type Option func(*Extensions)
@@ -197,6 +199,36 @@ func New(ctx context.Context, set Settings, cfg Config, options ...Option) (*Ext
 	}
 
 	for _, extID := range cfg {
+		instanceID := &component.InstanceID{
+			ID:   extID,
+			Kind: component.KindExtension,
+		}
+		extSet := extension.Settings{
+			ID:                extID,
+			TelemetrySettings: set.Telemetry,
+			BuildInfo:         set.BuildInfo,
+		}
+		extSet.TelemetrySettings.ReportStatus = status.NewReportStatusFunc(instanceID, exts.reporter.ReportStatus)
+		extSet.TelemetrySettings.Logger = components.ExtensionLogger(set.Telemetry.Logger, extID)
+
+		ext, err := set.Extensions.Create(ctx, extSet)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create extension %q: %w", extID, err)
+		}
+
+		// Check if the factory really created the extension.
+		if ext == nil {
+			return nil, fmt.Errorf("factory for %q produced a nil extension", extID)
+		}
+
+		exts.extMap[extID] = ext
+		exts.instanceIDs[extID] = instanceID
+	}
+
+	for _, extID := range set.DefaultExtensions {
+		if _, exists := exts.extMap[extID]; exists {
+			continue
+		}
 		instanceID := &component.InstanceID{
 			ID:   extID,
 			Kind: component.KindExtension,

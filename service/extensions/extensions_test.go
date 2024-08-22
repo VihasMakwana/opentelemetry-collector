@@ -84,7 +84,7 @@ func TestBuildExtensions(t *testing.T) {
 			_, err := New(context.Background(), Settings{
 				Telemetry:  componenttest.NewNopTelemetrySettings(),
 				BuildInfo:  component.NewDefaultBuildInfo(),
-				Extensions: extension.NewBuilder(tt.extensionsConfigs, tt.factories),
+				Extensions: extension.NewBuilder(tt.extensionsConfigs, []component.ID{}, tt.factories),
 			}, tt.config)
 			require.Error(t, err)
 			assert.EqualError(t, err, tt.wantErrMsg)
@@ -177,7 +177,7 @@ func (tc testOrderCase) testOrdering(t *testing.T) {
 		Telemetry: componenttest.NewNopTelemetrySettings(),
 		BuildInfo: component.NewDefaultBuildInfo(),
 		Extensions: extension.NewBuilder(
-			extCfgs,
+			extCfgs, []component.ID{},
 			map[component.Type]extension.Factory{
 				recordingExtensionFactory.Type(): recordingExtensionFactory,
 			}),
@@ -285,7 +285,7 @@ func TestNotifyConfig(t *testing.T) {
 			extensions, err := New(context.Background(), Settings{
 				Telemetry:  componenttest.NewNopTelemetrySettings(),
 				BuildInfo:  component.NewDefaultBuildInfo(),
-				Extensions: extension.NewBuilder(tt.extensionsConfigs, tt.factories),
+				Extensions: extension.NewBuilder(tt.extensionsConfigs, []component.ID{}, tt.factories),
 			}, tt.serviceExtensions)
 			assert.NoError(t, err)
 			errs := extensions.NotifyConfig(context.Background(), confmap.NewFromStringMap(map[string]interface{}{}))
@@ -432,7 +432,7 @@ func TestStatusReportedOnStartupShutdown(t *testing.T) {
 				Settings{
 					Telemetry:  componenttest.NewNopTelemetrySettings(),
 					BuildInfo:  component.NewDefaultBuildInfo(),
-					Extensions: extension.NewBuilder(extensionsConfigs, factories),
+					Extensions: extension.NewBuilder(extensionsConfigs, []component.ID{}, factories),
 				},
 				[]component.ID{compID},
 				WithReporter(rep),

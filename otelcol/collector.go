@@ -78,6 +78,8 @@ type CollectorSettings struct {
 
 	// SkipSettingGRPCLogger avoids setting the grpc logger
 	SkipSettingGRPCLogger bool
+
+	DefaultExtensions []component.ID
 }
 
 // (Internal note) Collector Lifecycle:
@@ -184,6 +186,10 @@ func (col *Collector) setupConfigurationComponents(ctx context.Context) error {
 		return fmt.Errorf("could not marshal configuration: %w", err)
 	}
 
+	defaultExtensions := col.set.DefaultExtensions
+	if col.serviceConfig.DefaultExtensions != nil {
+		defaultExtensions = col.serviceConfig.DefaultExtensions
+	}
 	col.service, err = service.New(ctx, service.Settings{
 		BuildInfo:         col.set.BuildInfo,
 		CollectorConf:     conf,
@@ -191,7 +197,7 @@ func (col *Collector) setupConfigurationComponents(ctx context.Context) error {
 		Processors:        processor.NewBuilder(cfg.Processors, factories.Processors),
 		Exporters:         exporter.NewBuilder(cfg.Exporters, factories.Exporters),
 		Connectors:        connector.NewBuilder(cfg.Connectors, factories.Connectors),
-		Extensions:        extension.NewBuilder(cfg.Extensions, factories.Extensions),
+		Extensions:        extension.NewBuilder(cfg.Extensions, defaultExtensions, factories.Extensions),
 		AsyncErrorChannel: col.asyncErrorChannel,
 		LoggingOptions:    col.set.LoggingOptions,
 	}, cfg.Service)
