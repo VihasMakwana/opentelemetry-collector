@@ -63,9 +63,9 @@ type fakeProvider struct {
 	logger *zap.Logger
 }
 
-func newFileProvider(t testing.TB) ProviderFactory {
+func newFileProvider(tb testing.TB) ProviderFactory {
 	return newFakeProvider("file", func(_ context.Context, uri string, _ WatcherFunc) (*Retrieved, error) {
-		return NewRetrieved(newConfFromFile(t, uri[5:]))
+		return NewRetrieved(newConfFromFile(tb, uri[5:]))
 	})
 }
 
@@ -79,9 +79,9 @@ func newFakeProvider(scheme string, ret func(ctx context.Context, uri string, wa
 	})
 }
 
-func newObservableFileProvider(t testing.TB) (ProviderFactory, *fakeProvider) {
+func newObservableFileProvider(tb testing.TB) (ProviderFactory, *fakeProvider) {
 	return newObservableProvider("file", func(_ context.Context, uri string, _ WatcherFunc) (*Retrieved, error) {
-		return NewRetrieved(newConfFromFile(t, uri[5:]))
+		return NewRetrieved(newConfFromFile(tb, uri[5:]))
 	})
 }
 
@@ -165,7 +165,7 @@ func TestResolverErrors(t *testing.T) {
 			expectResolveErr: true,
 		},
 		{
-			name:      "retrieve location not convertable to Conf",
+			name:      "retrieve location not convertible to Conf",
 			locations: []string{"mock:", "err:"},
 			providers: []Provider{
 				&mockProvider{},
@@ -305,14 +305,15 @@ func TestBackwardsCompatibilityForFilePath(t *testing.T) {
 						return nil, errors.New(uri)
 					}),
 				},
-				ConverterFactories: nil})
+				ConverterFactories: nil,
+			})
 			if tt.expectBuildErr {
 				assert.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
 			_, err = resolver.Resolve(context.Background())
-			assert.Contains(t, err.Error(), tt.errMessage, tt.name)
+			assert.ErrorContains(t, err, tt.errMessage, tt.name)
 		})
 	}
 }
@@ -327,30 +328,31 @@ func TestResolver(t *testing.T) {
 				return nil
 			}}),
 		},
-		ConverterFactories: nil})
+		ConverterFactories: nil,
+	})
 	require.NoError(t, err)
 	_, errN := resolver.Resolve(context.Background())
-	assert.NoError(t, errN)
+	require.NoError(t, errN)
 	assert.Equal(t, int32(0), numCalls.Load())
 
 	errW := <-resolver.Watch()
-	assert.NoError(t, errW)
+	require.NoError(t, errW)
 
 	// Repeat Resolve/Watch.
 
 	_, errN = resolver.Resolve(context.Background())
-	assert.NoError(t, errN)
+	require.NoError(t, errN)
 	assert.Equal(t, int32(1), numCalls.Load())
 
 	errW = <-resolver.Watch()
-	assert.NoError(t, errW)
+	require.NoError(t, errW)
 
 	_, errN = resolver.Resolve(context.Background())
-	assert.NoError(t, errN)
+	require.NoError(t, errN)
 	assert.Equal(t, int32(2), numCalls.Load())
 
 	errC := resolver.Shutdown(context.Background())
-	assert.NoError(t, errC)
+	require.NoError(t, errC)
 	assert.Equal(t, int32(3), numCalls.Load())
 }
 
@@ -358,7 +360,8 @@ func TestResolverNewLinesInOpaqueValue(t *testing.T) {
 	_, err := NewResolver(ResolverSettings{
 		URIs:               []string{"mock:receivers:\n nop:\n"},
 		ProviderFactories:  []ProviderFactory{newMockProvider(&mockProvider{retM: map[string]any{}})},
-		ConverterFactories: nil})
+		ConverterFactories: nil,
+	})
 	assert.NoError(t, err)
 }
 
@@ -366,7 +369,8 @@ func TestResolverNoLocations(t *testing.T) {
 	_, err := NewResolver(ResolverSettings{
 		URIs:               []string{},
 		ProviderFactories:  []ProviderFactory{newMockProvider(&mockProvider{})},
-		ConverterFactories: nil})
+		ConverterFactories: nil,
+	})
 	assert.Error(t, err)
 }
 
@@ -374,7 +378,8 @@ func TestResolverNoProviders(t *testing.T) {
 	_, err := NewResolver(ResolverSettings{
 		URIs:               []string{filepath.Join("testdata", "config.yaml")},
 		ProviderFactories:  nil,
-		ConverterFactories: nil})
+		ConverterFactories: nil,
+	})
 	assert.Error(t, err)
 }
 
@@ -382,22 +387,23 @@ func TestResolverShutdownClosesWatch(t *testing.T) {
 	resolver, err := NewResolver(ResolverSettings{
 		URIs:               []string{filepath.Join("testdata", "config.yaml")},
 		ProviderFactories:  []ProviderFactory{newFileProvider(t)},
-		ConverterFactories: nil})
+		ConverterFactories: nil,
+	})
 	require.NoError(t, err)
 	_, errN := resolver.Resolve(context.Background())
-	assert.NoError(t, errN)
+	require.NoError(t, errN)
 
 	var watcherWG sync.WaitGroup
 	watcherWG.Add(1)
 	go func() {
 		errW, ok := <-resolver.Watch()
 		// Channel is closed, no exception
-		assert.Nil(t, errW)
+		assert.NoError(t, errW)
 		assert.False(t, ok)
 		watcherWG.Done()
 	}()
 
-	assert.NoError(t, resolver.Shutdown(context.Background()))
+	require.NoError(t, resolver.Shutdown(context.Background()))
 	watcherWG.Wait()
 }
 

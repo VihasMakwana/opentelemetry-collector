@@ -11,17 +11,21 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/consumer/consumertest"
-	"go.opentelemetry.io/collector/internal/iruntime"
 	"go.opentelemetry.io/collector/internal/memorylimiter"
+	"go.opentelemetry.io/collector/internal/memorylimiter/iruntime"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/memorylimiterprocessor/internal"
+	"go.opentelemetry.io/collector/processor/memorylimiterprocessor/internal/metadatatest"
 	"go.opentelemetry.io/collector/processor/processorhelper"
 	"go.opentelemetry.io/collector/processor/processortest"
 )
@@ -48,6 +52,7 @@ func TestNoDataLoss(t *testing.T) {
 	runtime.ReadMemStats(&ms)
 
 	// Set the limit to current usage plus expected increase. This means initially we will not be limited.
+	//nolint:gosec
 	cfg.MemoryLimitMiB = uint32(ms.Alloc/(1024*1024) + expectedMemoryIncreaseMiB)
 	cfg.MemorySpikeLimitMiB = 1
 
@@ -56,8 +61,9 @@ func TestNoDataLoss(t *testing.T) {
 	limiter, err := newMemoryLimiterProcessor(set, cfg)
 	require.NoError(t, err)
 
-	processor, err := processorhelper.NewLogsProcessor(context.Background(), processor.Settings{
-		ID: component.MustNewID("nop"),
+	processor, err := processorhelper.NewLogs(context.Background(), processor.Settings{
+		ID:                component.MustNewID("nop"),
+		TelemetrySettings: componenttest.NewNopTelemetrySettings(),
 	}, cfg, exporter,
 		limiter.processLogs,
 		processorhelper.WithStart(limiter.start),
@@ -175,7 +181,7 @@ func TestMetricsMemoryPressureResponse(t *testing.T) {
 
 			ml, err := newMemoryLimiterProcessor(processortest.NewNopSettings(), tt.mlCfg)
 			require.NoError(t, err)
-			mp, err := processorhelper.NewMetricsProcessor(
+			mp, err := processorhelper.NewMetrics(
 				context.Background(),
 				processortest.NewNopSettings(),
 				tt.mlCfg,
@@ -192,7 +198,7 @@ func TestMetricsMemoryPressureResponse(t *testing.T) {
 			if tt.expectError {
 				assert.Equal(t, memorylimiter.ErrDataRefused, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 			assert.NoError(t, mp.Shutdown(ctx))
 		})
@@ -201,6 +207,35 @@ func TestMetricsMemoryPressureResponse(t *testing.T) {
 		memorylimiter.GetMemoryFn = iruntime.TotalMemory
 		memorylimiter.ReadMemStatsFn = runtime.ReadMemStats
 	})
+}
+
+func TestMetricsTelemetry(t *testing.T) {
+	tel := metadatatest.SetupTelemetry()
+	cfg := &Config{
+		CheckInterval:         time.Second,
+		MemoryLimitPercentage: 50,
+		MemorySpikePercentage: 10,
+	}
+	metrics, err := NewFactory().CreateMetrics(context.Background(), tel.NewSettings(), cfg, consumertest.NewNop())
+	require.NoError(t, err)
+	require.NoError(t, metrics.Start(context.Background(), componenttest.NewNopHost()))
+
+	md := pmetric.NewMetrics()
+	md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty().SetEmptySum().DataPoints().AppendEmpty()
+	for requestNum := 0; requestNum < 10; requestNum++ {
+		require.NoError(t, metrics.ConsumeMetrics(context.Background(), md))
+	}
+	require.NoError(t, metrics.Shutdown(context.Background()))
+
+	metadatatest.AssertEqualProcessorAcceptedMetricPoints(t, tel.Telemetry,
+		[]metricdata.DataPoint[int64]{
+			{
+				Value:      10,
+				Attributes: attribute.NewSet(attribute.String("processor", "memory_limiter")),
+			},
+		}, metricdatatest.IgnoreTimestamp())
+
+	require.NoError(t, tel.Shutdown(context.Background()))
 }
 
 // TestTraceMemoryPressureResponse manipulates results from querying memory and
@@ -265,7 +300,7 @@ func TestTraceMemoryPressureResponse(t *testing.T) {
 
 			ml, err := newMemoryLimiterProcessor(processortest.NewNopSettings(), tt.mlCfg)
 			require.NoError(t, err)
-			tp, err := processorhelper.NewTracesProcessor(
+			tp, err := processorhelper.NewTraces(
 				context.Background(),
 				processortest.NewNopSettings(),
 				tt.mlCfg,
@@ -282,7 +317,7 @@ func TestTraceMemoryPressureResponse(t *testing.T) {
 			if tt.expectError {
 				assert.Equal(t, memorylimiter.ErrDataRefused, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 			assert.NoError(t, tp.Shutdown(ctx))
 		})
@@ -355,7 +390,7 @@ func TestLogMemoryPressureResponse(t *testing.T) {
 
 			ml, err := newMemoryLimiterProcessor(processortest.NewNopSettings(), tt.mlCfg)
 			require.NoError(t, err)
-			tp, err := processorhelper.NewLogsProcessor(
+			tp, err := processorhelper.NewLogs(
 				context.Background(),
 				processortest.NewNopSettings(),
 				tt.mlCfg,
@@ -372,7 +407,7 @@ func TestLogMemoryPressureResponse(t *testing.T) {
 			if tt.expectError {
 				assert.Equal(t, memorylimiter.ErrDataRefused, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 			assert.NoError(t, tp.Shutdown(ctx))
 		})

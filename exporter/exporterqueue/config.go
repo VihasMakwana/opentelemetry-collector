@@ -20,6 +20,9 @@ type Config struct {
 	NumConsumers int `mapstructure:"num_consumers"`
 	// QueueSize is the maximum number of requests allowed in queue at any given time.
 	QueueSize int `mapstructure:"queue_size"`
+	// Blocking controls the queue behavior when full.
+	// If true it blocks until enough space to add the new request to the queue.
+	Blocking bool `mapstructure:"blocking"`
 }
 
 // NewDefaultConfig returns the default Config.
@@ -30,19 +33,20 @@ func NewDefaultConfig() Config {
 		Enabled:      true,
 		NumConsumers: 10,
 		QueueSize:    1_000,
+		Blocking:     true,
 	}
 }
 
-// Validate checks if the QueueSettings configuration is valid
+// Validate checks if the Config is valid
 func (qCfg *Config) Validate() error {
 	if !qCfg.Enabled {
 		return nil
 	}
 	if qCfg.NumConsumers <= 0 {
-		return errors.New("number of consumers must be positive")
+		return errors.New("`num_consumers` must be positive")
 	}
 	if qCfg.QueueSize <= 0 {
-		return errors.New("queue size must be positive")
+		return errors.New("`queue_size` must be positive")
 	}
 	return nil
 }

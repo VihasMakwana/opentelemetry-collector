@@ -5,7 +5,7 @@ package pprofile // import "go.opentelemetry.io/collector/pdata/pprofile"
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpcollectorprofile "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/profiles/v1experimental"
+	otlpcollectorprofile "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/profiles/v1development"
 )
 
 // profiles is the top-level struct that is propagated through the profiles pipeline.
@@ -48,4 +48,21 @@ func (ms Profiles) ResourceProfiles() ResourceProfilesSlice {
 // MarkReadOnly marks the ResourceProfiles as shared so that no further modifications can be done on it.
 func (ms Profiles) MarkReadOnly() {
 	internal.SetProfilesState(internal.Profiles(ms), internal.StateReadOnly)
+}
+
+// SampleCount calculates the total number of samples.
+func (ms Profiles) SampleCount() int {
+	sampleCount := 0
+	rps := ms.ResourceProfiles()
+	for i := 0; i < rps.Len(); i++ {
+		rp := rps.At(i)
+		sps := rp.ScopeProfiles()
+		for j := 0; j < sps.Len(); j++ {
+			pcs := sps.At(j).Profiles()
+			for k := 0; k < pcs.Len(); k++ {
+				sampleCount += pcs.At(k).Sample().Len()
+			}
+		}
+	}
+	return sampleCount
 }

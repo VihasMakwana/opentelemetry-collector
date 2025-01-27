@@ -52,7 +52,6 @@ func answerGet(w http.ResponseWriter, _ *http.Request) {
 // https://go.dev/src/crypto/tls/generate_cert.go
 func generateCertificate(hostname string) (cert string, key string, err error) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-
 	if err != nil {
 		return "", "", fmt.Errorf("Failed to generate private key: %w", err)
 	}
@@ -62,7 +61,6 @@ func generateCertificate(hostname string) (cert string, key string, err error) {
 	notAfter := notBefore.Add(time.Hour * 12)
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-
 	if err != nil {
 		return "", "", fmt.Errorf("Failed to generate serial number: %w", err)
 	}
@@ -81,7 +79,6 @@ func generateCertificate(hostname string) (cert string, key string, err error) {
 		DNSNames:              []string{hostname},
 	}
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-
 	if err != nil {
 		return "", "", fmt.Errorf("Failed to create certificate: %w", err)
 	}
@@ -100,13 +97,11 @@ func generateCertificate(hostname string) (cert string, key string, err error) {
 	}
 
 	keyOut, err := os.CreateTemp("", "key*.pem")
-
 	if err != nil {
 		return "", "", fmt.Errorf("Failed to open key.pem for writing: %w", err)
 	}
 
 	privBytes, err := x509.MarshalPKCS8PrivateKey(priv)
-
 	if err != nil {
 		return "", "", fmt.Errorf("Unable to marshal private key: %w", err)
 	}
@@ -133,15 +128,15 @@ func TestFunctionalityDownloadFileHTTP(t *testing.T) {
 
 func TestFunctionalityDownloadFileHTTPS(t *testing.T) {
 	certPath, keyPath, err := generateCertificate("localhost")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	invalidCert, err := os.CreateTemp("", "cert*.crt")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	_, err = invalidCert.Write([]byte{0, 1, 2})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(answerGet))
 	ts.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
 	ts.StartTLS()
@@ -152,7 +147,7 @@ func TestFunctionalityDownloadFileHTTPS(t *testing.T) {
 	defer ts.Close()
 
 	tests := []struct {
-		testName               string
+		name                   string
 		certPath               string
 		hostName               string
 		useCertificate         bool
@@ -160,7 +155,7 @@ func TestFunctionalityDownloadFileHTTPS(t *testing.T) {
 		shouldError            bool
 	}{
 		{
-			testName:               "Test valid certificate and name",
+			name:                   "Test valid certificate and name",
 			certPath:               certPath,
 			hostName:               "localhost",
 			useCertificate:         true,
@@ -168,7 +163,7 @@ func TestFunctionalityDownloadFileHTTPS(t *testing.T) {
 			shouldError:            false,
 		},
 		{
-			testName:               "Test valid certificate with invalid name",
+			name:                   "Test valid certificate with invalid name",
 			certPath:               certPath,
 			hostName:               "127.0.0.1",
 			useCertificate:         true,
@@ -176,7 +171,7 @@ func TestFunctionalityDownloadFileHTTPS(t *testing.T) {
 			shouldError:            true,
 		},
 		{
-			testName:               "Test valid certificate with invalid name, skip validation",
+			name:                   "Test valid certificate with invalid name, skip validation",
 			certPath:               certPath,
 			hostName:               "127.0.0.1",
 			useCertificate:         true,
@@ -184,7 +179,7 @@ func TestFunctionalityDownloadFileHTTPS(t *testing.T) {
 			shouldError:            false,
 		},
 		{
-			testName:               "Test no certificate should fail",
+			name:                   "Test no certificate should fail",
 			certPath:               certPath,
 			hostName:               "localhost",
 			useCertificate:         false,
@@ -192,7 +187,7 @@ func TestFunctionalityDownloadFileHTTPS(t *testing.T) {
 			shouldError:            true,
 		},
 		{
-			testName:               "Test invalid cert",
+			name:                   "Test invalid cert",
 			certPath:               invalidCert.Name(),
 			hostName:               "localhost",
 			useCertificate:         true,
@@ -200,7 +195,7 @@ func TestFunctionalityDownloadFileHTTPS(t *testing.T) {
 			shouldError:            true,
 		},
 		{
-			testName:               "Test no cert",
+			name:                   "Test no cert",
 			certPath:               "no_certificate",
 			hostName:               "localhost",
 			useCertificate:         true,
@@ -210,7 +205,7 @@ func TestFunctionalityDownloadFileHTTPS(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.testName, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			fp := newConfigurableHTTPProvider(HTTPSScheme, confmaptest.NewNopProviderSettings())
 			// Parse url of the test server to get the port number.
 			tsURL, err := url.Parse(ts.URL)
@@ -232,12 +227,12 @@ func TestFunctionalityDownloadFileHTTPS(t *testing.T) {
 func TestUnsupportedScheme(t *testing.T) {
 	fp := New(HTTPScheme, confmaptest.NewNopProviderSettings())
 	_, err := fp.Retrieve(context.Background(), "https://...", nil)
-	assert.Error(t, err)
-	assert.NoError(t, fp.Shutdown(context.Background()))
+	require.Error(t, err)
+	require.NoError(t, fp.Shutdown(context.Background()))
 
 	fp = New(HTTPSScheme, confmaptest.NewNopProviderSettings())
 	_, err = fp.Retrieve(context.Background(), "http://...", nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.NoError(t, fp.Shutdown(context.Background()))
 }
 
@@ -257,7 +252,7 @@ func TestRetrieveFromShutdownServer(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	ts.Close()
 	_, err := fp.Retrieve(context.Background(), ts.URL, nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 	require.NoError(t, fp.Shutdown(context.Background()))
 }
 
@@ -268,7 +263,7 @@ func TestNonExistent(t *testing.T) {
 	}))
 	defer ts.Close()
 	_, err := fp.Retrieve(context.Background(), ts.URL, nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 	require.NoError(t, fp.Shutdown(context.Background()))
 }
 

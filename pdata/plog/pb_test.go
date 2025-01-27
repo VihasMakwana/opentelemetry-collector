@@ -29,7 +29,6 @@ func TestProtoSizer(t *testing.T) {
 	bytes, err := marshaler.MarshalLogs(ld)
 	require.NoError(t, err)
 	assert.Equal(t, len(bytes), size)
-
 }
 
 func TestProtoSizerEmptyLogs(t *testing.T) {
@@ -44,7 +43,7 @@ func BenchmarkLogsToProto(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		buf, err := marshaler.MarshalLogs(logs)
 		require.NoError(b, err)
-		assert.NotEqual(b, 0, len(buf))
+		assert.NotEmpty(b, buf)
 	}
 }
 
@@ -54,7 +53,7 @@ func BenchmarkLogsFromProto(b *testing.B) {
 	baseLogs := generateBenchmarkLogs(128)
 	buf, err := marshaler.MarshalLogs(baseLogs)
 	require.NoError(b, err)
-	assert.NotEqual(b, 0, len(buf))
+	assert.NotEmpty(b, buf)
 	b.ResetTimer()
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {

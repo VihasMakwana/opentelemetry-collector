@@ -65,10 +65,8 @@ func validateConfigDataType(t reflect.Type) error {
 
 // checkStructFieldTags inspects the tags of a struct field.
 func checkStructFieldTags(f reflect.StructField) error {
-
 	tagValue := f.Tag.Get("mapstructure")
 	if tagValue == "" {
-
 		// Ignore special types.
 		switch f.Type.Kind() {
 		case reflect.Interface, reflect.Chan, reflect.Func, reflect.Uintptr, reflect.UnsafePointer:
@@ -124,6 +122,9 @@ func checkStructFieldTags(f reflect.StructField) error {
 	default:
 		fieldTag := tagParts[0]
 		if !configFieldTagRegExp.MatchString(fieldTag) {
+			if f.Name == "AdditionalProperties" {
+				return nil
+			}
 			return fmt.Errorf(
 				"field %q has config tag %q which doesn't satisfy %q",
 				f.Name,

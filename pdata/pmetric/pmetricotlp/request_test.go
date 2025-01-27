@@ -9,10 +9,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-var _ json.Unmarshaler = ExportRequest{}
-var _ json.Marshaler = ExportRequest{}
+var (
+	_ json.Unmarshaler = ExportRequest{}
+	_ json.Marshaler   = ExportRequest{}
+)
 
 var metricsRequestJSON = []byte(`
 	{
@@ -35,17 +38,17 @@ var metricsRequestJSON = []byte(`
 
 func TestRequestToPData(t *testing.T) {
 	tr := NewExportRequest()
-	assert.Equal(t, tr.Metrics().MetricCount(), 0)
+	assert.Equal(t, 0, tr.Metrics().MetricCount())
 	tr.Metrics().ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
-	assert.Equal(t, tr.Metrics().MetricCount(), 1)
+	assert.Equal(t, 1, tr.Metrics().MetricCount())
 }
 
 func TestRequestJSON(t *testing.T) {
 	mr := NewExportRequest()
-	assert.NoError(t, mr.UnmarshalJSON(metricsRequestJSON))
+	require.NoError(t, mr.UnmarshalJSON(metricsRequestJSON))
 	assert.Equal(t, "test_metric", mr.Metrics().ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Name())
 
 	got, err := mr.MarshalJSON()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, strings.Join(strings.Fields(string(metricsRequestJSON)), ""), string(got))
 }

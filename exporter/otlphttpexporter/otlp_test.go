@@ -33,13 +33,18 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
+	"go.opentelemetry.io/collector/pdata/pprofile"
+	"go.opentelemetry.io/collector/pdata/pprofile/pprofileotlp"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 )
 
-const tracesTelemetryType = "traces"
-const metricsTelemetryType = "metrics"
-const logsTelemetryType = "logs"
+const (
+	tracesTelemetryType   = "traces"
+	metricsTelemetryType  = "metrics"
+	logsTelemetryType     = "logs"
+	profilesTelemetryType = "profiles"
+)
 
 type responseSerializer interface {
 	MarshalJSON() ([]byte, error)
@@ -69,6 +74,14 @@ func provideLogsResponseSerializer() responseSerializer {
 	partial := response.PartialSuccess()
 	partial.SetErrorMessage("hello")
 	partial.SetRejectedLogRecords(1)
+	return response
+}
+
+func provideProfilesResponseSerializer() responseSerializer {
+	response := pprofileotlp.NewExportResponse()
+	partial := response.PartialSuccess()
+	partial.SetErrorMessage("hello")
+	partial.SetRejectedProfiles(1)
 	return response
 }
 
@@ -205,20 +218,20 @@ func TestErrorResponses(t *testing.T) {
 				writer.WriteHeader(test.responseStatus)
 				if test.responseBody != nil {
 					msg, err := proto.Marshal(test.responseBody.Proto())
-					require.NoError(t, err)
+					assert.NoError(t, err)
 					_, err = writer.Write(msg)
-					require.NoError(t, err)
+					assert.NoError(t, err)
 				}
 			})
 			defer srv.Close()
 
 			cfg := &Config{
 				Encoding:       EncodingProto,
-				TracesEndpoint: fmt.Sprintf("%s/v1/traces", srv.URL),
-				// Create without QueueSettings and RetryConfig so that ConsumeTraces
+				TracesEndpoint: srv.URL + "/v1/traces",
+				// Create without QueueConfig and RetryConfig so that ConsumeTraces
 				// returns the errors that we want to check immediately.
 			}
-			exp, err := createTracesExporter(context.Background(), exportertest.NewNopSettings(), cfg)
+			exp, err := createTraces(context.Background(), exportertest.NewNopSettings(), cfg)
 			require.NoError(t, err)
 
 			// start the exporter
@@ -231,7 +244,7 @@ func TestErrorResponses(t *testing.T) {
 			// generate traces
 			traces := ptrace.NewTraces()
 			err = exp.ConsumeTraces(context.Background(), traces)
-			assert.Error(t, err)
+			require.Error(t, err)
 
 			if test.isPermErr {
 				assert.True(t, consumererror.IsPermanent(err))
@@ -244,7 +257,7 @@ func TestErrorResponses(t *testing.T) {
 
 func TestErrorResponseInvalidResponseBody(t *testing.T) {
 	resp := &http.Response{
-		StatusCode:    400,
+		StatusCode:    http.StatusBadRequest,
 		Body:          io.NopCloser(badReader{}),
 		ContentLength: 100,
 	}
@@ -279,22 +292,22 @@ func TestUserAgent(t *testing.T) {
 	}
 
 	t.Run("traces", func(t *testing.T) {
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
 				srv := createBackend("/v1/traces", func(writer http.ResponseWriter, request *http.Request) {
-					assert.Contains(t, request.Header.Get("user-agent"), test.expectedUA)
-					writer.WriteHeader(200)
+					assert.Contains(t, request.Header.Get("user-agent"), tt.expectedUA)
+					writer.WriteHeader(http.StatusOK)
 				})
 				defer srv.Close()
 
 				cfg := &Config{
 					Encoding:       EncodingProto,
-					TracesEndpoint: fmt.Sprintf("%s/v1/traces", srv.URL),
+					TracesEndpoint: srv.URL + "/v1/traces",
 					ClientConfig: confighttp.ClientConfig{
-						Headers: test.headers,
+						Headers: tt.headers,
 					},
 				}
-				exp, err := createTracesExporter(context.Background(), set, cfg)
+				exp, err := createTraces(context.Background(), set, cfg)
 				require.NoError(t, err)
 
 				// start the exporter
@@ -313,22 +326,22 @@ func TestUserAgent(t *testing.T) {
 	})
 
 	t.Run("metrics", func(t *testing.T) {
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
 				srv := createBackend("/v1/metrics", func(writer http.ResponseWriter, request *http.Request) {
-					assert.Contains(t, request.Header.Get("user-agent"), test.expectedUA)
-					writer.WriteHeader(200)
+					assert.Contains(t, request.Header.Get("user-agent"), tt.expectedUA)
+					writer.WriteHeader(http.StatusOK)
 				})
 				defer srv.Close()
 
 				cfg := &Config{
 					Encoding:        EncodingProto,
-					MetricsEndpoint: fmt.Sprintf("%s/v1/metrics", srv.URL),
+					MetricsEndpoint: srv.URL + "/v1/metrics",
 					ClientConfig: confighttp.ClientConfig{
-						Headers: test.headers,
+						Headers: tt.headers,
 					},
 				}
-				exp, err := createMetricsExporter(context.Background(), set, cfg)
+				exp, err := createMetrics(context.Background(), set, cfg)
 				require.NoError(t, err)
 
 				// start the exporter
@@ -347,22 +360,22 @@ func TestUserAgent(t *testing.T) {
 	})
 
 	t.Run("logs", func(t *testing.T) {
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
 				srv := createBackend("/v1/logs", func(writer http.ResponseWriter, request *http.Request) {
-					assert.Contains(t, request.Header.Get("user-agent"), test.expectedUA)
-					writer.WriteHeader(200)
+					assert.Contains(t, request.Header.Get("user-agent"), tt.expectedUA)
+					writer.WriteHeader(http.StatusOK)
 				})
 				defer srv.Close()
 
 				cfg := &Config{
 					Encoding:     EncodingProto,
-					LogsEndpoint: fmt.Sprintf("%s/v1/logs", srv.URL),
+					LogsEndpoint: srv.URL + "/v1/logs",
 					ClientConfig: confighttp.ClientConfig{
-						Headers: test.headers,
+						Headers: tt.headers,
 					},
 				}
-				exp, err := createLogsExporter(context.Background(), set, cfg)
+				exp, err := createLogs(context.Background(), set, cfg)
 				require.NoError(t, err)
 
 				// start the exporter
@@ -378,6 +391,40 @@ func TestUserAgent(t *testing.T) {
 				require.NoError(t, err)
 
 				srv.Close()
+			})
+		}
+	})
+
+	t.Run("profiles", func(t *testing.T) {
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				srv := createBackend("/v1development/profiles", func(writer http.ResponseWriter, request *http.Request) {
+					assert.Contains(t, request.Header.Get("user-agent"), test.expectedUA)
+					writer.WriteHeader(http.StatusOK)
+				})
+				defer srv.Close()
+
+				cfg := &Config{
+					Encoding: EncodingProto,
+					ClientConfig: confighttp.ClientConfig{
+						Endpoint: srv.URL,
+						Headers:  test.headers,
+					},
+				}
+				exp, err := createProfiles(context.Background(), set, cfg)
+				require.NoError(t, err)
+
+				// start the exporter
+				err = exp.Start(context.Background(), componenttest.NewNopHost())
+				require.NoError(t, err)
+				t.Cleanup(func() {
+					require.NoError(t, exp.Shutdown(context.Background()))
+				})
+
+				// generate data
+				profiles := pprofile.NewProfiles()
+				err = exp.ConsumeProfiles(context.Background(), profiles)
+				require.NoError(t, err)
 			})
 		}
 	})
@@ -404,6 +451,10 @@ func TestPartialSuccessInvalidBody(t *testing.T) {
 			telemetryType: "logs",
 			handler:       exp.logsPartialSuccessHandler,
 		},
+		{
+			telemetryType: "profiles",
+			handler:       exp.profilesPartialSuccessHandler,
+		},
 	}
 	for _, tt := range invalidBodyCases {
 		t.Run("Invalid response body_"+tt.telemetryType, func(t *testing.T) {
@@ -428,7 +479,7 @@ func TestPartialSuccessUnsupportedContentType(t *testing.T) {
 			contentType: "application/octet-stream",
 		},
 	}
-	for _, telemetryType := range []string{"logs", "metrics", "traces"} {
+	for _, telemetryType := range []string{"logs", "metrics", "traces", "profiles"} {
 		for _, tt := range unsupportedContentTypeCases {
 			t.Run("Unsupported content type "+tt.contentType+" "+telemetryType, func(t *testing.T) {
 				var handler func(b []byte, contentType string) error
@@ -439,6 +490,8 @@ func TestPartialSuccessUnsupportedContentType(t *testing.T) {
 					handler = exp.metricsPartialSuccessHandler
 				case "traces":
 					handler = exp.tracesPartialSuccessHandler
+				case "profiles":
+					handler = exp.profilesPartialSuccessHandler
 				default:
 					panic(telemetryType)
 				}
@@ -461,16 +514,16 @@ func TestPartialSuccess_logs(t *testing.T) {
 		partial.SetErrorMessage("hello")
 		partial.SetRejectedLogRecords(1)
 		b, err := response.MarshalProto()
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		writer.Header().Set("Content-Type", "application/x-protobuf")
 		_, err = writer.Write(b)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	})
 	defer srv.Close()
 
 	cfg := &Config{
 		Encoding:     EncodingProto,
-		LogsEndpoint: fmt.Sprintf("%s/v1/logs", srv.URL),
+		LogsEndpoint: srv.URL + "/v1/logs",
 		ClientConfig: confighttp.ClientConfig{},
 	}
 	set := exportertest.NewNopSettings()
@@ -478,7 +531,7 @@ func TestPartialSuccess_logs(t *testing.T) {
 	logger, observed := observer.New(zap.DebugLevel)
 	set.TelemetrySettings.Logger = zap.New(logger)
 
-	exp, err := createLogsExporter(context.Background(), set, cfg)
+	exp, err := createLogs(context.Background(), set, cfg)
 	require.NoError(t, err)
 
 	// start the exporter
@@ -528,6 +581,11 @@ func TestPartialResponse_missingHeaderButHasBody(t *testing.T) {
 			telemetryType: logsTelemetryType,
 			handler:       exp.logsPartialSuccessHandler,
 			serializer:    provideLogsResponseSerializer,
+		},
+		{
+			telemetryType: profilesTelemetryType,
+			handler:       exp.profilesPartialSuccessHandler,
+			serializer:    provideProfilesResponseSerializer,
 		},
 	}
 
@@ -593,6 +651,10 @@ func TestPartialResponse_missingHeaderAndBody(t *testing.T) {
 			telemetryType: logsTelemetryType,
 			handler:       exp.logsPartialSuccessHandler,
 		},
+		{
+			telemetryType: profilesTelemetryType,
+			handler:       exp.profilesPartialSuccessHandler,
+		},
 	}
 
 	for _, ct := range contentTypes {
@@ -607,7 +669,7 @@ func TestPartialResponse_missingHeaderAndBody(t *testing.T) {
 					},
 				}
 				err = handlePartialSuccessResponse(resp, tt.handler)
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 			})
 		}
 	}
@@ -660,6 +722,11 @@ func TestPartialSuccess_shortContentLengthHeader(t *testing.T) {
 			telemetryType: logsTelemetryType,
 			handler:       exp.logsPartialSuccessHandler,
 			serializer:    provideLogsResponseSerializer,
+		},
+		{
+			telemetryType: profilesTelemetryType,
+			handler:       exp.profilesPartialSuccessHandler,
+			serializer:    provideProfilesResponseSerializer,
 		},
 	}
 
@@ -720,6 +787,10 @@ func TestPartialSuccess_longContentLengthHeader(t *testing.T) {
 			telemetryType: logsTelemetryType,
 			serializer:    provideLogsResponseSerializer,
 		},
+		{
+			telemetryType: profilesTelemetryType,
+			serializer:    provideProfilesResponseSerializer,
+		},
 	}
 
 	for _, ct := range contentTypes {
@@ -743,6 +814,8 @@ func TestPartialSuccess_longContentLengthHeader(t *testing.T) {
 					handler = exp.metricsPartialSuccessHandler
 				case logsTelemetryType:
 					handler = exp.logsPartialSuccessHandler
+				case profilesTelemetryType:
+					handler = exp.profilesPartialSuccessHandler
 				default:
 					require.Fail(t, "unsupported telemetry type: %s", ct.contentType)
 				}
@@ -769,7 +842,7 @@ func TestPartialSuccess_longContentLengthHeader(t *testing.T) {
 				// No real error happens for long content length, so the partial
 				// success is handled as success with a warning.
 				err = handlePartialSuccessResponse(resp, handler)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Len(t, observed.FilterLevelExact(zap.WarnLevel).All(), 1)
 				assert.Contains(t, observed.FilterLevelExact(zap.WarnLevel).All()[0].Message, "Partial success")
 			})
@@ -801,22 +874,22 @@ func TestPartialSuccess_traces(t *testing.T) {
 		partial.SetErrorMessage("hello")
 		partial.SetRejectedSpans(1)
 		bytes, err := response.MarshalProto()
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		writer.Header().Set("Content-Type", "application/x-protobuf")
 		_, err = writer.Write(bytes)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	})
 	defer srv.Close()
 
 	cfg := &Config{
 		Encoding:       EncodingProto,
-		TracesEndpoint: fmt.Sprintf("%s/v1/traces", srv.URL),
+		TracesEndpoint: srv.URL + "/v1/traces",
 		ClientConfig:   confighttp.ClientConfig{},
 	}
 	set := exportertest.NewNopSettings()
 	logger, observed := observer.New(zap.DebugLevel)
 	set.TelemetrySettings.Logger = zap.New(logger)
-	exp, err := createTracesExporter(context.Background(), set, cfg)
+	exp, err := createTraces(context.Background(), set, cfg)
 	require.NoError(t, err)
 
 	// start the exporter
@@ -841,22 +914,22 @@ func TestPartialSuccess_metrics(t *testing.T) {
 		partial.SetErrorMessage("hello")
 		partial.SetRejectedDataPoints(1)
 		bytes, err := response.MarshalProto()
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		writer.Header().Set("Content-Type", "application/x-protobuf")
 		_, err = writer.Write(bytes)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	})
 	defer srv.Close()
 
 	cfg := &Config{
 		Encoding:        EncodingProto,
-		MetricsEndpoint: fmt.Sprintf("%s/v1/metrics", srv.URL),
+		MetricsEndpoint: srv.URL + "/v1/metrics",
 		ClientConfig:    confighttp.ClientConfig{},
 	}
 	set := exportertest.NewNopSettings()
 	logger, observed := observer.New(zap.DebugLevel)
 	set.TelemetrySettings.Logger = zap.New(logger)
-	exp, err := createMetricsExporter(context.Background(), set, cfg)
+	exp, err := createMetrics(context.Background(), set, cfg)
 	require.NoError(t, err)
 
 	// start the exporter
@@ -869,6 +942,47 @@ func TestPartialSuccess_metrics(t *testing.T) {
 	// generate data
 	metrics := pmetric.NewMetrics()
 	err = exp.ConsumeMetrics(context.Background(), metrics)
+	require.NoError(t, err)
+	require.Len(t, observed.FilterLevelExact(zap.WarnLevel).All(), 1)
+	require.Contains(t, observed.FilterLevelExact(zap.WarnLevel).All()[0].Message, "Partial success")
+}
+
+func TestPartialSuccess_profiles(t *testing.T) {
+	srv := createBackend("/v1development/profiles", func(writer http.ResponseWriter, _ *http.Request) {
+		response := pprofileotlp.NewExportResponse()
+		partial := response.PartialSuccess()
+		partial.SetErrorMessage("hello")
+		partial.SetRejectedProfiles(1)
+		bytes, err := response.MarshalProto()
+		assert.NoError(t, err)
+		writer.Header().Set("Content-Type", "application/x-protobuf")
+		_, err = writer.Write(bytes)
+		assert.NoError(t, err)
+	})
+	defer srv.Close()
+
+	cfg := &Config{
+		Encoding: EncodingProto,
+		ClientConfig: confighttp.ClientConfig{
+			Endpoint: srv.URL,
+		},
+	}
+	set := exportertest.NewNopSettings()
+	logger, observed := observer.New(zap.DebugLevel)
+	set.TelemetrySettings.Logger = zap.New(logger)
+	exp, err := createProfiles(context.Background(), set, cfg)
+	require.NoError(t, err)
+
+	// start the exporter
+	err = exp.Start(context.Background(), componenttest.NewNopHost())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, exp.Shutdown(context.Background()))
+	})
+
+	// generate data
+	profiles := pprofile.NewProfiles()
+	err = exp.ConsumeProfiles(context.Background(), profiles)
 	require.NoError(t, err)
 	require.Len(t, observed.FilterLevelExact(zap.WarnLevel).All(), 1)
 	require.Contains(t, observed.FilterLevelExact(zap.WarnLevel).All()[0].Message, "Partial success")
@@ -897,19 +1011,19 @@ func TestEncoding(t *testing.T) {
 	}
 
 	t.Run("traces", func(t *testing.T) {
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
 				srv := createBackend("/v1/traces", func(writer http.ResponseWriter, request *http.Request) {
-					assert.Contains(t, request.Header.Get("content-type"), test.expectedEncoding)
-					writer.WriteHeader(200)
+					assert.Contains(t, request.Header.Get("content-type"), tt.expectedEncoding)
+					writer.WriteHeader(http.StatusOK)
 				})
 				defer srv.Close()
 
 				cfg := &Config{
-					TracesEndpoint: fmt.Sprintf("%s/v1/traces", srv.URL),
-					Encoding:       test.encoding,
+					TracesEndpoint: srv.URL + "/v1/traces",
+					Encoding:       tt.encoding,
 				}
-				exp, err := createTracesExporter(context.Background(), set, cfg)
+				exp, err := createTraces(context.Background(), set, cfg)
 				require.NoError(t, err)
 
 				// start the exporter
@@ -928,19 +1042,19 @@ func TestEncoding(t *testing.T) {
 	})
 
 	t.Run("metrics", func(t *testing.T) {
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
 				srv := createBackend("/v1/metrics", func(writer http.ResponseWriter, request *http.Request) {
-					assert.Contains(t, request.Header.Get("content-type"), test.expectedEncoding)
-					writer.WriteHeader(200)
+					assert.Contains(t, request.Header.Get("content-type"), tt.expectedEncoding)
+					writer.WriteHeader(http.StatusOK)
 				})
 				defer srv.Close()
 
 				cfg := &Config{
-					MetricsEndpoint: fmt.Sprintf("%s/v1/metrics", srv.URL),
-					Encoding:        test.encoding,
+					MetricsEndpoint: srv.URL + "/v1/metrics",
+					Encoding:        tt.encoding,
 				}
-				exp, err := createMetricsExporter(context.Background(), set, cfg)
+				exp, err := createMetrics(context.Background(), set, cfg)
 				require.NoError(t, err)
 
 				// start the exporter
@@ -959,19 +1073,19 @@ func TestEncoding(t *testing.T) {
 	})
 
 	t.Run("logs", func(t *testing.T) {
-		for _, test := range tests {
-			t.Run(test.name, func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
 				srv := createBackend("/v1/logs", func(writer http.ResponseWriter, request *http.Request) {
-					assert.Contains(t, request.Header.Get("content-type"), test.expectedEncoding)
-					writer.WriteHeader(200)
+					assert.Contains(t, request.Header.Get("content-type"), tt.expectedEncoding)
+					writer.WriteHeader(http.StatusOK)
 				})
 				defer srv.Close()
 
 				cfg := &Config{
-					LogsEndpoint: fmt.Sprintf("%s/v1/logs", srv.URL),
-					Encoding:     test.encoding,
+					LogsEndpoint: srv.URL + "/v1/logs",
+					Encoding:     tt.encoding,
 				}
-				exp, err := createLogsExporter(context.Background(), set, cfg)
+				exp, err := createLogs(context.Background(), set, cfg)
 				require.NoError(t, err)
 
 				// start the exporter
@@ -987,6 +1101,39 @@ func TestEncoding(t *testing.T) {
 				require.NoError(t, err)
 
 				srv.Close()
+			})
+		}
+	})
+
+	t.Run("profiles", func(t *testing.T) {
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				srv := createBackend("/v1development/profiles", func(writer http.ResponseWriter, request *http.Request) {
+					assert.Contains(t, request.Header.Get("content-type"), test.expectedEncoding)
+					writer.WriteHeader(http.StatusOK)
+				})
+				defer srv.Close()
+
+				cfg := &Config{
+					ClientConfig: confighttp.ClientConfig{
+						Endpoint: srv.URL,
+					},
+					Encoding: test.encoding,
+				}
+				exp, err := createProfiles(context.Background(), set, cfg)
+				require.NoError(t, err)
+
+				// start the exporter
+				err = exp.Start(context.Background(), componenttest.NewNopHost())
+				require.NoError(t, err)
+				t.Cleanup(func() {
+					require.NoError(t, exp.Shutdown(context.Background()))
+				})
+
+				// generate data
+				profiles := pprofile.NewProfiles()
+				err = exp.ConsumeProfiles(context.Background(), profiles)
+				require.NoError(t, err)
 			})
 		}
 	})

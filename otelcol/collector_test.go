@@ -165,7 +165,7 @@ func (e statusWatcherExtension) ComponentStatusChanged(source *componentstatus.I
 
 func TestComponentStatusWatcher(t *testing.T) {
 	factories, err := nopFactories()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Use a processor factory that creates "unhealthy" processor: one that
 	// always reports StatusRecoverableError after successful Start.
@@ -201,7 +201,7 @@ func TestComponentStatusWatcher(t *testing.T) {
 	wg := startCollector(context.Background(), t, col)
 
 	// An unhealthy processor asynchronously reports a recoverable error. Depending on the Go
-	// Scheduler the statuses reported at startup will be one of the two valid sequnces below.
+	// Scheduler the statuses reported at startup will be one of the two valid sequences below.
 	startupStatuses1 := []componentstatus.Status{
 		componentstatus.StatusStarting,
 		componentstatus.StatusOK,
@@ -389,8 +389,8 @@ func TestCollectorRun(t *testing.T) {
 	tests := []struct {
 		file string
 	}{
-		{file: "otelcol-nometrics.yaml"},
-		{file: "otelcol-noaddress.yaml"},
+		{file: "otelcol-noreaders.yaml"},
+		{file: "otelcol-emptyreaders.yaml"},
 	}
 
 	for _, tt := range tests {
@@ -483,7 +483,7 @@ func startCollector(ctx context.Context, t *testing.T, col *Collector) *sync.Wai
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		require.NoError(t, col.Run(ctx))
+		assert.NoError(t, col.Run(ctx))
 	}()
 	return wg
 }
@@ -569,9 +569,9 @@ func newEnvProvider() confmap.ProviderFactory {
 	})
 }
 
-func newDefaultConfigProviderSettings(t testing.TB, uris []string) ConfigProviderSettings {
+func newDefaultConfigProviderSettings(tb testing.TB, uris []string) ConfigProviderSettings {
 	fileProvider := newFakeProvider("file", func(_ context.Context, uri string, _ confmap.WatcherFunc) (*confmap.Retrieved, error) {
-		return confmap.NewRetrieved(newConfFromFile(t, uri[5:]))
+		return confmap.NewRetrieved(newConfFromFile(tb, uri[5:]))
 	})
 	return ConfigProviderSettings{
 		ResolverSettings: confmap.ResolverSettings{
@@ -585,12 +585,12 @@ func newDefaultConfigProviderSettings(t testing.TB, uris []string) ConfigProvide
 }
 
 // newConfFromFile creates a new Conf by reading the given file.
-func newConfFromFile(t testing.TB, fileName string) map[string]any {
+func newConfFromFile(tb testing.TB, fileName string) map[string]any {
 	content, err := os.ReadFile(filepath.Clean(fileName))
-	require.NoErrorf(t, err, "unable to read the file %v", fileName)
+	require.NoErrorf(tb, err, "unable to read the file %v", fileName)
 
 	var data map[string]any
-	require.NoError(t, yaml.Unmarshal(content, &data), "unable to parse yaml")
+	require.NoError(tb, yaml.Unmarshal(content, &data), "unable to parse yaml")
 
 	return confmap.NewFromStringMap(data).ToStringMap()
 }

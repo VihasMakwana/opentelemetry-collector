@@ -14,21 +14,21 @@ import (
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/exporter"
-	"go.opentelemetry.io/collector/exporter/exporterprofiles"
 	"go.opentelemetry.io/collector/exporter/exportertest"
+	"go.opentelemetry.io/collector/exporter/xexporter"
 )
 
 func TestExporterBuilder(t *testing.T) {
 	defaultCfg := struct{}{}
 	factories, err := exporter.MakeFactoryMap([]exporter.Factory{
 		exporter.NewFactory(component.MustNewType("err"), nil),
-		exporter.NewFactory(
+		xexporter.NewFactory(
 			component.MustNewType("all"),
 			func() component.Config { return &defaultCfg },
-			exporter.WithTraces(createExporterTraces, component.StabilityLevelDevelopment),
-			exporter.WithMetrics(createExporterMetrics, component.StabilityLevelAlpha),
-			exporter.WithLogs(createExporterLogs, component.StabilityLevelDeprecated),
-			exporterprofiles.WithProfiles(createExporterProfiles, component.StabilityLevelDevelopment),
+			xexporter.WithTraces(createExporterTraces, component.StabilityLevelDevelopment),
+			xexporter.WithMetrics(createExporterMetrics, component.StabilityLevelAlpha),
+			xexporter.WithLogs(createExporterLogs, component.StabilityLevelDeprecated),
+			xexporter.WithProfiles(createxexporter, component.StabilityLevelDevelopment),
 		),
 	}...)
 	require.NoError(t, err)
@@ -65,37 +65,37 @@ func TestExporterBuilder(t *testing.T) {
 
 			te, err := b.CreateTraces(context.Background(), createExporterSettings(tt.id))
 			if tt.err != "" {
-				assert.EqualError(t, err, tt.err)
+				require.EqualError(t, err, tt.err)
 				assert.Nil(t, te)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, nopExporterInstance, te)
 			}
 
 			me, err := b.CreateMetrics(context.Background(), createExporterSettings(tt.id))
 			if tt.err != "" {
-				assert.EqualError(t, err, tt.err)
+				require.EqualError(t, err, tt.err)
 				assert.Nil(t, me)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, nopExporterInstance, me)
 			}
 
 			le, err := b.CreateLogs(context.Background(), createExporterSettings(tt.id))
 			if tt.err != "" {
-				assert.EqualError(t, err, tt.err)
+				require.EqualError(t, err, tt.err)
 				assert.Nil(t, le)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, nopExporterInstance, le)
 			}
 
 			pe, err := b.CreateProfiles(context.Background(), createExporterSettings(tt.id))
 			if tt.err != "" {
-				assert.EqualError(t, err, tt.err)
+				require.EqualError(t, err, tt.err)
 				assert.Nil(t, pe)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, nopExporterInstance, pe)
 			}
 		})
@@ -105,13 +105,13 @@ func TestExporterBuilder(t *testing.T) {
 func TestExporterBuilderMissingConfig(t *testing.T) {
 	defaultCfg := struct{}{}
 	factories, err := exporter.MakeFactoryMap([]exporter.Factory{
-		exporter.NewFactory(
+		xexporter.NewFactory(
 			component.MustNewType("all"),
 			func() component.Config { return &defaultCfg },
-			exporter.WithTraces(createExporterTraces, component.StabilityLevelDevelopment),
-			exporter.WithMetrics(createExporterMetrics, component.StabilityLevelAlpha),
-			exporter.WithLogs(createExporterLogs, component.StabilityLevelDeprecated),
-			exporterprofiles.WithProfiles(createExporterProfiles, component.StabilityLevelDevelopment),
+			xexporter.WithTraces(createExporterTraces, component.StabilityLevelDevelopment),
+			xexporter.WithMetrics(createExporterMetrics, component.StabilityLevelAlpha),
+			xexporter.WithLogs(createExporterLogs, component.StabilityLevelDeprecated),
+			xexporter.WithProfiles(createxexporter, component.StabilityLevelDevelopment),
 		),
 	}...)
 
@@ -121,19 +121,19 @@ func TestExporterBuilderMissingConfig(t *testing.T) {
 	missingID := component.MustNewIDWithName("all", "missing")
 
 	te, err := bErr.CreateTraces(context.Background(), createExporterSettings(missingID))
-	assert.EqualError(t, err, "exporter \"all/missing\" is not configured")
+	require.EqualError(t, err, "exporter \"all/missing\" is not configured")
 	assert.Nil(t, te)
 
 	me, err := bErr.CreateMetrics(context.Background(), createExporterSettings(missingID))
-	assert.EqualError(t, err, "exporter \"all/missing\" is not configured")
+	require.EqualError(t, err, "exporter \"all/missing\" is not configured")
 	assert.Nil(t, me)
 
 	le, err := bErr.CreateLogs(context.Background(), createExporterSettings(missingID))
-	assert.EqualError(t, err, "exporter \"all/missing\" is not configured")
+	require.EqualError(t, err, "exporter \"all/missing\" is not configured")
 	assert.Nil(t, le)
 
 	pe, err := bErr.CreateProfiles(context.Background(), createExporterSettings(missingID))
-	assert.EqualError(t, err, "exporter \"all/missing\" is not configured")
+	require.EqualError(t, err, "exporter \"all/missing\" is not configured")
 	assert.Nil(t, pe)
 }
 
@@ -158,25 +158,25 @@ func TestNewNopExporterConfigsAndFactories(t *testing.T) {
 	set := exportertest.NewNopSettings()
 	set.ID = component.NewID(nopType)
 
-	traces, err := factory.CreateTracesExporter(context.Background(), set, cfg)
+	traces, err := factory.CreateTraces(context.Background(), set, cfg)
 	require.NoError(t, err)
 	bTraces, err := builder.CreateTraces(context.Background(), set)
 	require.NoError(t, err)
 	assert.IsType(t, traces, bTraces)
 
-	metrics, err := factory.CreateMetricsExporter(context.Background(), set, cfg)
+	metrics, err := factory.CreateMetrics(context.Background(), set, cfg)
 	require.NoError(t, err)
 	bMetrics, err := builder.CreateMetrics(context.Background(), set)
 	require.NoError(t, err)
 	assert.IsType(t, metrics, bMetrics)
 
-	logs, err := factory.CreateLogsExporter(context.Background(), set, cfg)
+	logs, err := factory.CreateLogs(context.Background(), set, cfg)
 	require.NoError(t, err)
 	bLogs, err := builder.CreateLogs(context.Background(), set)
 	require.NoError(t, err)
 	assert.IsType(t, logs, bLogs)
 
-	profiles, err := factory.CreateProfilesExporter(context.Background(), set, cfg)
+	profiles, err := factory.(xexporter.Factory).CreateProfiles(context.Background(), set, cfg)
 	require.NoError(t, err)
 	bProfiles, err := builder.CreateProfiles(context.Background(), set)
 	require.NoError(t, err)
@@ -206,7 +206,7 @@ func createExporterLogs(context.Context, exporter.Settings, component.Config) (e
 	return nopExporterInstance, nil
 }
 
-func createExporterProfiles(context.Context, exporter.Settings, component.Config) (exporterprofiles.Profiles, error) {
+func createxexporter(context.Context, exporter.Settings, component.Config) (xexporter.Profiles, error) {
 	return nopExporterInstance, nil
 }
 

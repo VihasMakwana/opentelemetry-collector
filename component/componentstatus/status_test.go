@@ -27,7 +27,7 @@ func TestNewStatusEvent(t *testing.T) {
 		t.Run(fmt.Sprintf("%s without error", status), func(t *testing.T) {
 			ev := NewEvent(status)
 			require.Equal(t, status, ev.Status())
-			require.Nil(t, ev.Err())
+			require.NoError(t, ev.Err())
 			require.False(t, ev.Timestamp().IsZero())
 		})
 	}
@@ -105,8 +105,10 @@ func Test_ReportStatus(t *testing.T) {
 	})
 }
 
-var _ = (component.Host)(nil)
-var _ = (Reporter)(nil)
+var (
+	_ = (component.Host)(nil)
+	_ = (Reporter)(nil)
+)
 
 type reporter struct {
 	reportStatusCalled bool
