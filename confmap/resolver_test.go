@@ -17,8 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
-
-	"go.opentelemetry.io/collector/featuregate"
 )
 
 type mockProvider struct {
@@ -433,10 +431,10 @@ func TestResolverDefaultProviderSet(t *testing.T) {
 }
 
 type mergeTest struct {
-	Name     string           `yaml:"name"`
-	Append   bool             `yaml:"append"`
-	Configs  []map[string]any `yaml:"configs"`
-	Expected map[string]any   `yaml:"expected"`
+	Name        string           `yaml:"name"`
+	AppendPaths []string         `yaml:"append_paths"`
+	Configs     []map[string]any `yaml:"configs"`
+	Expected    map[string]any   `yaml:"expected"`
 }
 
 func TestMergeFunctionality(t *testing.T) {
@@ -447,13 +445,10 @@ func TestMergeFunctionality(t *testing.T) {
 	require.NoError(t, err)
 	for _, tt := range testcases {
 		t.Run(tt.Name, func(t *testing.T) {
-			require.NoError(t, featuregate.GlobalRegistry().Set(MergeComponentsAppendID, tt.Append))
-			defer func() {
-				require.NoError(t, featuregate.GlobalRegistry().Set(MergeComponentsAppendID, false))
-			}()
+
 			conf := New()
 			for _, c := range tt.Configs {
-				require.NoError(t, conf.Merge(NewFromStringMap(c)))
+				require.NoError(t, conf.Merge(NewFromStringMap(c), WithMergePaths(tt.AppendPaths)))
 			}
 			mergedConf := conf.ToStringMap()
 			require.Truef(t, reflect.DeepEqual(mergedConf, tt.Expected), "Exp: %s\nGot: %s", tt.Expected, mergedConf)
